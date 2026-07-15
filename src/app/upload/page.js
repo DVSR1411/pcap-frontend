@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
-import UploadPage from './page.jsx';
+import UploadPage from './UploadClient.jsx';
 
 export default async function UploadServerPage() {
   const session = await auth();
