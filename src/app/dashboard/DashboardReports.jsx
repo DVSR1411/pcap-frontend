@@ -8,10 +8,8 @@ import {
   CheckCircle2, User, Cpu, AlertTriangle, X, Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { fetchReportsGeo, fetchReportsDetails, fetchIPScan } from "./dashboardApiService";
+import { fetchReportsGeo, fetchReportsDetails, fetchIPScan, downloadReportsExport } from "./dashboardApiService";
 import { WorldMapLeaflet } from "./WorldMapLeaflet";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import PropTypes from "prop-types";
 
 DashboardReports.propTypes = {
@@ -19,6 +17,7 @@ DashboardReports.propTypes = {
   pcapId: PropTypes.string,
   customFetchGeo: PropTypes.func,
   customFetchDetails: PropTypes.func,
+  customExport: PropTypes.func,
   session: PropTypes.object,
 };
 
@@ -27,6 +26,7 @@ export function DashboardReports({
   pcapId = null,
   customFetchGeo = null,
   customFetchDetails = null,
+  customExport = null,
   session
 }) {
   const [geoData, setGeoData] = useState({ countries: [], cities: [], isps: [] });
@@ -44,7 +44,6 @@ export function DashboardReports({
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [discoveryMode, setDiscoveryMode] = useState(initialMode); // 'country' or 'isp'
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -137,216 +136,22 @@ export function DashboardReports({
   };
 
   const handleDownloadReport = async () => {
-    if (!selectedItem || detailsData.length === 0) return;
-    startPdfGeneration();
-  };
-
-  const startPdfGeneration = async () => {
+    if (!selectedItem) return;
     setIsGeneratingPdf(true);
-    const userPassword = session?.user?.pdfPassword || "";
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      encryption: {
-        userPassword: userPassword,
-        ownerPassword: userPassword,
-        userPermissions: ["print", "modify", "copy", "annot-forms"]
-      }
-    });
-
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const blue = [37, 99, 235]; // #2563eb
-    const slate = [100, 116, 139];
-
-    // --- COVER PAGE ---
-    doc.setFillColor(30, 41, 59); // Dark background
-    doc.rect(0, 0, pageWidth, pageHeight, 'F');
-    
-    // Accent Line
-    doc.setDrawColor(blue[0], blue[1], blue[2]);
-    doc.setLineWidth(1.5);
-    doc.line(20, 40, 20, 120);
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("REPORT", 30, 45);
-    
-    doc.setFontSize(48);
-    doc.text(selectedItem.name.toUpperCase(), 30, 75, { maxWidth: 160 });
-    
-    doc.setFontSize(12);
-    doc.setTextColor(slate[0], slate[1], slate[2]);
-    doc.text(`GENERATED ON: ${new Date().toLocaleString()}`, 30, 145);
-    doc.text(`TOTAL IDENTIFIERS: ${detailsData.length}`, 30, 155);
-
-    doc.setFontSize(10);
-    doc.setTextColor(blue[0], blue[1], blue[2]);
-    doc.text("CDAC-Hyderabd", 30, pageHeight - 30);
-
-    // --- DEEP TELEMETRY (Optimized with Batch Fetching) ---
-    const ipsToDetail = detailsData.slice(0, 500); 
-    const intelCache = new Map();
-    const batchSize = 5; // Concurrency limit to avoid overwhelming the server
-    
-    // Step 1: Pre-fetch all intelligence data in parallel batches
-    setIsGeneratingPdf(true); // Ensure loading state is active
-    for (let i = 0; i < ipsToDetail.length; i += batchSize) {
-      const batch = ipsToDetail.slice(i, i + batchSize);
-      await Promise.all(batch.map(async (item) => {
-        try {
-          const res = await fetchIPScan(item.ip);
-          if (res?.success) {
-            intelCache.set(item.ip, res.data);
-          }
-        } catch (e) {
-          console.error(`Failed to pre-fetch intel for ${item.ip}:`, e);
-        }
-      }));
+    try {
+      const exportFn = customExport || downloadReportsExport;
+      const blob = await exportFn(discoveryMode, selectedItem.name);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${discoveryMode}_${selectedItem.name.replace(/\s+/g, '_')}_report.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Report download failed:', e);
+    } finally {
+      setIsGeneratingPdf(false);
     }
-
-    let currentY = 0;
-    
-    for (const [index, item] of ipsToDetail.entries()) {
-      const sNo = `[#${(index + 1).toString().padStart(3, '0')}]`;
-      
-      // Intelligent Page Breaking
-      if (currentY === 0 || currentY > pageHeight - 110) {
-        doc.addPage();
-        currentY = 0;
-      } else {
-        currentY += 12;
-        doc.setDrawColor(241, 245, 249);
-        doc.setLineWidth(0.5);
-        doc.line(20, currentY, pageWidth - 20, currentY);
-        currentY += 8;
-      }
-      
-      // Relative Header Bar
-      doc.setFillColor(30, 41, 59);
-      doc.rect(0, currentY, pageWidth, 35, 'F');
-      
-      doc.setDrawColor(blue[0], blue[1], blue[2]);
-      doc.setLineWidth(1);
-      doc.line(20, currentY + 10, 20, currentY + 25);
-      
-      doc.setTextColor(150, 150, 150);
-      doc.setFontSize(8);
-      doc.text("IP INTELLIGENCE FOR", 25, currentY + 13);
-      
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(22);
-      doc.text(`${sNo}  ${item.ip}`, 25, currentY + 28);
-      
-      currentY += 45;
-
-      const intel = intelCache.get(item.ip);
-      if (intel) {
-        try {
-          // Section 1: Host Identity
-          doc.setTextColor(blue[0], blue[1], blue[2]);
-          doc.setFontSize(10);
-          doc.setFont("helvetica", "bold");
-          doc.text("HOST IDENTITY & NETWORK ORIGIN", 20, currentY + 5);
-          
-          autoTable(doc, {
-            startY: currentY + 10,
-            head: [['PARAMETER', 'VALUE']],
-            body: [
-              ['AUTONOMOUS SYSTEM NUMBER', intel.asn || 'N/A'],
-              ['OS MATCH', intel.os_info?.best_match || 'N/A'],
-              ['OS CONFIDENCE', intel.os_info?.confidence ? `${intel.os_info.confidence}%` : 'N/A'],
-              ['SYSTEM STATUS', intel.status?.toUpperCase() || 'N/A'],
-              ['DNSBL REPUTATION', intel.dnsbl?.listed ? "LISTED / AT RISK" : "CLEAN"],
-              ['rDNS / HOSTNAME', intel.rdns || 'N/A'],
-              ['PROXY TYPE', intel.proxy_type || 'N/A'],
-
-            ],
-            theme: 'grid',
-            headStyles: { fillColor: [100, 116, 139], fontSize: 8 },
-            bodyStyles: { fontSize: 8 },
-            columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold', fillColor: [245, 247, 250] } }
-          });
-
-          // Section 2: Ports & Services (With Reason)
-          doc.text("ACTIVE NETWORK SERVICES", 20, doc.lastAutoTable.finalY + 12);
-          autoTable(doc, {
-            startY: doc.lastAutoTable.finalY + 16,
-            head: [['PORT', 'SERVICE / APPLICATION', 'PROTOCOL', 'STATE', 'REASON']],
-            body: (intel.ports || []).map(p => [
-              p.port, 
-              p.service || p.application || 'Unknown', 
-              p.protocol?.toUpperCase(), 
-              p.state?.toUpperCase(), 
-              p.reason || 'N/A'
-            ]),
-            headStyles: { fillColor: blue, fontSize: 8 },
-            bodyStyles: { fontSize: 8 }
-          });
-
-          // Section 3: Geographic & Diagnostics
-          doc.text("GEOGRAPHIC INTEL", 20, doc.lastAutoTable.finalY + 12);
-          autoTable(doc, {
-            startY: doc.lastAutoTable.finalY + 16,
-            head: [['METADATA', 'VALUE']],
-            body: [
-              ['CITY / REGION', intel.geo?.city || 'N/A'],
-              ['COUNTRY', intel.geo?.country || 'N/A'],
-              ['ISP', intel.geo?.isp || 'N/A'],
-              ['COORDINATES', `${intel.geo?.latitude || 'N/A'}, ${intel.geo?.longitude || 'N/A'}`],          
-            ],
-            theme: 'grid',
-            headStyles: { fillColor: [100, 116, 139], fontSize: 8 },
-            bodyStyles: { fontSize: 8 },
-            columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold', fillColor: [245, 247, 250] } }
-          });
-          
-          // Section 4: WHOIS & Ownership Hierarchy
-          doc.text("OWNERSHIP DETAILS", 20, doc.lastAutoTable.finalY + 12);
-          
-          // Contacts Summary Table
-          autoTable(doc, {
-            startY: doc.lastAutoTable.finalY + 16,
-            head: [['CONTACT TYPE', 'NAME', 'EMAIL', 'PHONE']],
-            body: [
-              ['REGISTRANT', intel.whois?.contacts?.registrant?.name || 'N/A', intel.whois?.contacts?.registrant?.email || 'N/A', intel.whois?.contacts?.registrant?.phone || 'N/A'],
-              ['TECHNICAL', intel.whois?.contacts?.technical?.name || 'N/A', intel.whois?.contacts?.technical?.email || 'N/A', intel.whois?.contacts?.technical?.phone || 'N/A'],
-              ['ABUSE', intel.whois?.contacts?.abuse?.name || 'N/A', intel.whois?.contacts?.abuse?.email || 'N/A', intel.whois?.contacts?.abuse?.phone || 'N/A']
-            ],
-            headStyles: { fillColor: [100, 116, 139], fontSize: 8 },
-            bodyStyles: { fontSize: 7 }
-          });
-
-          // Extended Ownership Table
-          autoTable(doc, {
-            startY: doc.lastAutoTable.finalY + 8,
-            body: [
-              ['ORGANIZATION', intel.whois?.org || intel.whois?.name || 'N/A'],
-              ['NETWORK OWNER', intel.whois?.network_owner || 'N/A'],
-              ['CIDR RANGE', intel.whois?.cidr || 'N/A'],
-              ['REGISTRAR', intel.whois?.registrar || 'N/A'],
-              ['TOP LEVEL DOMAIN / WEBSITE', `${intel.whois?.tld || 'N/A'} / ${intel.whois?.website || 'N/A'}`],
-              ['REGISTERED DATE', intel.whois?.registered || 'N/A']
-            ],
-            theme: 'grid',
-            bodyStyles: { fontSize: 8 },
-            columnStyles: { 0: { cellWidth: 50, fontStyle: 'bold', fillColor: [245, 247, 250] } }
-          });
-          currentY = doc.lastAutoTable.finalY;
-        } catch (e) {
-          console.error('Deep telemetry acquisition failed:', e);
-          doc.setTextColor(200, 0, 0);
-          doc.text("CRITICAL: Deep telemetry acquisition failed for this node.", 20, currentY + 10);
-          currentY += 20;
-        }
-      }
-    }
-
-    doc.save(`SINKHOLE_INTEL_${selectedItem.name.replace(/\s+/g, '_')}_${Date.now()}.pdf`);
-    setIsGeneratingPdf(false);
-    setShowPasswordModal(true);
   };
 
   if (isLoadingGeo) {
@@ -879,55 +684,6 @@ export function DashboardReports({
                 )}
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showPasswordModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ type: "spring", duration: 0.3 }}
-              className="bg-card border-2 border-theme p-8 max-w-md w-full relative shadow-2xl flex flex-col items-center text-center rounded-none"
-            >
-              <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 text-blue-500 flex items-center justify-center mb-6 rounded-none">
-                <Shield size={32} className="animate-pulse" />
-              </div>
-              
-              <h3 className="text-xl font-black text-foreground uppercase tracking-tight mb-4">
-                PDF Securely Encrypted
-              </h3>
-              
-              <div className="space-y-4 text-left w-full mb-8">
-                <p className="text-[14px] text-slate-500 font-medium leading-relaxed text-center">
-                  To open the downloaded report, please use your dynamic PDF password.
-                </p>
-                <div className="bg-slate-500/5 border border-theme p-4 text-[12px] font-black text-foreground/90 uppercase tracking-wider space-y-2 text-center rounded-none">
-                  <div className="text-blue-500">Password Formula:</div>
-                  <div className="text-[13px] lowercase font-mono bg-card px-3 py-2 border border-theme inline-block select-all whitespace-nowrap">
-                    username(first 5) + password(first 5)
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-400 italic text-center font-medium leading-normal">
-                  Example: If username is <strong>admin1</strong> and password is <strong>password</strong>, the PDF password is <strong className="font-mono not-italic text-blue-500">adminpassw</strong>.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowPasswordModal(false)}
-                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-black text-[12px] uppercase tracking-widest transition-all shadow-lg hover:shadow-blue-500/20 active:scale-95 rounded-none"
-              >
-                I Understand
-              </button>
-            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

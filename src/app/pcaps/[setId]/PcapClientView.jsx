@@ -7,7 +7,7 @@ import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import CaptureSummary from "./CaptureSummary";
 import TrafficDistribution from "./TrafficDistribution";
 import PcapInsights from "./PcapInsights";
-import { fetchPcapOverview, fetchPcapInsights, fetchPcapTimeline, fetchPcapConnections, fetchIpScan, fetchPcapGeoReport, fetchPcapDetails, fetchPcapMap } from "./apiService";
+import { fetchPcapOverview, fetchPcapInsights, fetchPcapTimeline, fetchPcapConnections, fetchIpScan, fetchPcapGeoReport, fetchPcapDetails, fetchPcapMap, downloadPcapReportExport } from "./apiService";
 import PropTypes from "prop-types";
 import { DashboardReports } from "../../dashboard/DashboardReports";
 import { Server, User, Cpu, MapPin, ExternalLink, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -1109,6 +1109,7 @@ export default function PcapClientView({ setId, initialResponse, session }) {
                         initialMode={reportInitialMode}
                         customFetchGeo={fetchPcapGeoReport}
                         customFetchDetails={fetchPcapDetails}
+                        customExport={(type, value) => downloadPcapReportExport(selectedFile.pcap_id, type, value)}
                         session={session}
                       />
                     ) : (

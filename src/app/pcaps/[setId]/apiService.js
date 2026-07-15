@@ -144,3 +144,9 @@ export async function fetchPcapDetails(pcapId, type, value) {
     throw error;
   }
 }
+
+export async function downloadPcapReportExport(pcapId, type, value) {
+  const res = await fetchWithTimeout(`${BASE_URL}/reports/${pcapId}/${type}/${encodeURIComponent(value)}/export`);
+  if (!res.ok) throw new Error(`Export failed: ${res.status}`);
+  return res.blob();
+}
