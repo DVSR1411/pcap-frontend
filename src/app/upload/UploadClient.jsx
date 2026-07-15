@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSession } from "next-auth/react";
 import {
   UploadCloud, RefreshCcw, Trash2, Download,
   CheckCircle, AlertCircle, FileX, File, FileText,
@@ -58,9 +57,8 @@ function FileIcon({ name }) {
 }
 
 /* ── main component ─────────────────────────────── */
-export default function UploadPage() {
-  const { data: session } = useSession();
-  const authHeader = () => session?.accessToken ? { 'Authorization': `Bearer ${session.accessToken}` } : {};
+export default function UploadPage({ accessToken }) {
+  const authHeader = () => accessToken ? { 'Authorization': `Bearer ${accessToken}` } : {};
   const [buckets, setBuckets]             = useState([]);
   const [activeBucket, setActiveBucket]   = useState(null);
   const [files, setFiles]                 = useState([]);
