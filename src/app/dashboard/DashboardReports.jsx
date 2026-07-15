@@ -531,14 +531,22 @@ export function DashboardReports({
               </div>
               
               <div className="flex-1 relative">
-                <WorldMapLeaflet 
-                  externalIps={detailsData} 
-                  mode="reports"
-                  onIpClick={(ip) => {
-                    handleIpSelect(ip);
-                    setIsMapOpen(false);
-                  }}
-                />
+                {detailsData.some(ip => ip.latitude && ip.longitude) ? (
+                  <WorldMapLeaflet 
+                    externalIps={detailsData} 
+                    mode="reports"
+                    onIpClick={(ip) => {
+                      handleIpSelect(ip);
+                      setIsMapOpen(false);
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-center">
+                    <Globe size={48} className="text-slate-300" />
+                    <p className="text-slate-500 font-black text-[12px] uppercase tracking-widest">No geo coordinates available for these IPs</p>
+                    <p className="text-slate-400 text-[11px]">IP intelligence scan may still be in progress</p>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>
