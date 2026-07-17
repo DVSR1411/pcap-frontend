@@ -17,6 +17,8 @@ services:
       BACKEND_URL: ${BACKEND_URL}
     depends_on:
       - keycloak
+    extra_hosts:
+      - "auth.test-sta.duckdns.org:keycloak"
     networks:
       - keycloak_network
     mem_limit: 1g
@@ -53,7 +55,7 @@ services:
       - postgres
     networks:
       - keycloak_network
-    mem_limit: 1g
+    mem_limit: 2g
 
 volumes:
   postgres_data:

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 
+export const maxDuration = 300;
+
 async function handleRequest(request, { params }) {
   const pathParts = await params;
   const path = pathParts.path.join('/');
@@ -16,21 +18,21 @@ async function handleRequest(request, { params }) {
     const fetchOptions = {
       method: request.method,
       headers: {
-        'Content-Type': request.headers.get('Content-Type') || 'application/json',
+        ...(request.headers.get('Content-Type') && { 'Content-Type': request.headers.get('Content-Type') }),
         ...(session?.accessToken && { 'Authorization': `Bearer ${session.accessToken}` }),
       },
       cache: 'no-store',
+      duplex: 'half',
     };
 
-    if (['POST', 'PUT', 'PATCH'].includes(request.method)) {
-      const body = await request.arrayBuffer();
-      if (body.byteLength) fetchOptions.body = body;
+    if (['POST', 'PUT', 'PATCH'].includes(request.method) && request.body) {
+      fetchOptions.body = request.body;
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
 
-    const res = await fetch(backendUrl,{
+    const res = await fetch(backendUrl, {
       ...fetchOptions,
       signal: controller.signal,
     });
@@ -40,14 +42,10 @@ async function handleRequest(request, { params }) {
     const contentType = res.headers.get('Content-Type') || 'application/json';
     const responseBody = await res.arrayBuffer();
 
-    const response = new NextResponse(responseBody, {
+    return new NextResponse(responseBody, {
       status: res.status,
-      headers: {
-        'Content-Type': contentType,
-      },
+      headers: { 'Content-Type': contentType },
     });
-
-    return response;
   } catch (error) {
     console.error(`[Ceph Proxy] Error fetching ${backendUrl}:`, error);
     const status = error.name === 'AbortError' ? 504 : 500;

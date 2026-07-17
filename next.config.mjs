@@ -1,8 +1,13 @@
 const nextConfig = {
   output: 'standalone',
   reactCompiler: true,
-   eslint: {
+  eslint: {
     ignoreDuringBuilds: true,
+  },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10gb',
+    },
   },
 };
 
